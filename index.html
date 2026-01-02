@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>MovementScript Viewer</title>
+	<style>
+		:root {
+			font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+			line-height: 1.5;
+			font-weight: 400;
+			color-scheme: light dark;
+			color: rgba(255, 255, 255, 0.87);
+			background-color: #242424;
+			font-synthesis: none;
+			text-rendering: optimizeLegibility;
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
+		}
+
+		body {
+			margin: 0;
+			display: flex;
+			place-items: center;
+			min-width: 320px;
+			min-height: 100vh;
+			overflow: hidden;
+		}
+
+		#app {
+			width: 100%;
+			height: 100vh;
+		}
+
+		canvas {
+			display: block;
+		}
+
+		#overlay {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: rgba(0, 0, 0, 0.8);
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		#overlay.hidden {
+			display: none;
+		}
+
+		.content {
+			text-align: center;
+			background: #333;
+			padding: 1.2rem;
+			border-radius: 12px;
+			max-width: 480px;
+			width: 90%;
+			max-height: 90vh;
+			overflow-y: auto;
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+		}
+
+		.content h1 {
+			margin-top: 0;
+			margin-bottom: 0.8rem;
+			font-size: 1.4rem;
+		}
+
+		.content h3 {
+			margin: 0.5rem 0 0.1rem 0;
+			font-size: 0.95rem;
+		}
+
+		.content p {
+			margin: 0.1rem 0;
+			font-size: 0.8rem;
+			color: #ccc;
+		}
+
+		#logContainer {
+			background: #111;
+			border: 1px solid #444;
+			border-radius: 4px;
+			height: 70px;
+			overflow-y: auto;
+			margin: 0.8rem 0;
+			padding: 5px;
+			font-family: monospace;
+			font-size: 0.75rem;
+			text-align: left;
+		}
+
+		#overlay.dragover .content {
+			background: #555;
+			border: 2px dashed #fff;
+		}
+
+		#subtitleDisplay {
+			position: fixed;
+			bottom: 80px;
+			left: 50%;
+			transform: translateX(-50%);
+			font-size: 1.5rem;
+			font-weight: bold;
+			color: #fff;
+			text-align: center;
+			text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+			z-index: 10000;
+			/* Ensure it's on top of everything */
+			background-color: rgba(0, 0, 0, 0.5);
+			padding: 10px 20px;
+			border-radius: 8px;
+			display: none;
+			/* Hidden by default */
+			white-space: pre-wrap;
+		}
+
+		/* Play Button Styling */
+		#startBtn {
+			display: block;
+			margin: 0.5rem auto 0;
+			padding: 0.8rem 2.5rem;
+			font-size: 1.3rem;
+			background-color: #4CAF50;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			transition: background-color 0.3s;
+		}
+
+		#startBtn:hover {
+			background-color: #45a049;
+		}
+
+		#startBtn:disabled {
+			background-color: #555;
+			cursor: not-allowed;
+			opacity: 0.7;
+		}
+
+		input[type="file"] {
+			margin-top: 1rem;
+		}
+	</style>
+	<!-- Import Maps for CDN usage -->
+	<script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/",
+                "tweakpane": "https://unpkg.com/tweakpane@4.0.3/dist/tweakpane.js",
+                "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@3.0.0/lib/three-vrm.module.js"
+            }
+        }
+    </script>
+</head>
+
+<body>
+	<div id="app"></div>
+	<button id="backBtn"
+		style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 8px 16px; background: #444; color: white; border: 1px solid #666; cursor: pointer; display: none;">&lt;
+		Back to Menu</button>
+	<div id="subtitleDisplay"></div>
+	<div id="overlay">
+		<div class="content">
+			<h1>MovementScript Viewer</h1>
+
+			<div style="margin-bottom: 0.8rem;">
+				<h3>1. Load Avatar (Optional)</h3>
+				<p id="vrmStatus">Drag and drop VRM file or click to select</p>
+				<input type="file" id="vrmInput" accept=".vrm,.nvrm" />
+			</div>
+
+			<div style="margin-bottom: 0.8rem;">
+				<h3>2. Load Scripts</h3>
+				<p id="scriptStatus">Drag and drop JSON files or click to select</p>
+				<input type="file" id="fileInput" accept=".json" multiple />
+			</div>
+
+			<div style="margin-bottom: 0.8rem;">
+				<h3>3. Load Music (Optional)</h3>
+				<p id="musicStatus">Drag and drop music files or click to select</p>
+				<input type="file" id="musicInput" accept=".ogg,.mp3,.wav,.egg" />
+			</div>
+
+			<div style="margin-bottom: 0.8rem;">
+				<h3>4. Load Lyrics (Optional)</h3>
+				<p id="srtStatus">Drag and drop .srt file or click to select</p>
+				<input type="file" id="srtInput" accept=".srt" />
+			</div>
+
+			<button id="startBtn">Play</button>
+
+			<div id="logContainer">
+				<div style="color: #888;">> Waiting for files...</div>
+			</div>
+		</div>
+	</div>
+
+	<script type="module">
+		import * as THREE from 'three';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+		import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+		import { Pane } from 'tweakpane';
+
+		// --- Debugging ---
+		window.onerror = (msg, url, line, col, error) => {
+			const errorMsg = `Error: ${msg}\nLine: ${line}\nCol: ${col}\nURL: ${url}`;
+			console.error(errorMsg);
+			alert(errorMsg);
+			return false;
+		};
+
+		function logToUI(msg, color = '#fff') {
+			console.log("UI LOG:", msg);
+			const logContainer = document.getElementById('logContainer');
+			if (logContainer) {
+				const logEntry = document.createElement('div');
+				logEntry.style.color = color;
+				logEntry.innerText = `> ${msg}`;
+				logContainer.appendChild(logEntry);
+				logContainer.scrollTop = logContainer.scrollHeight;
+			}
+		}
+
+		// --- Configuration ---
+		const CONFIG = {
+			axesSize: 5,
+			gridSize: 20,
+			colors: [
+				0xFFFF00, // Yellow (Center)
+				0x00FFFF, // Cyan
+				0xFF00FF, // Magenta
+				0x00FF00, // Green
+				0xFF8800, // Orange
+				0x0088FF, // Light Blue
+				0xFF0000, // Red
+				0x88FF00, // Lime
+				0x8800FF, // Purple
+				0xFFFFFF, // White
+				0x000088, // Dark Blue
+				0x880000  // Dark Red
+			],
+			previewWidth: 320,
+			previewHeight: 180
+		};
+
+		// --- Global State ---
+		const state = {
+			isPlaying: false,
+			currentTime: 0,
+			totalDuration: 0,
+			playbackSpeed: 1.0,
+			scripts: [], // Array of { name, movements, visualizer, color, offset }
+			currentVRM: null, // For VRM animations
+			avatarRoot: null, // Scene object (VRM scene or default mesh)
+			avatarHeight: 1.6, // Default height in meters
+			audio: null, // Audio element for music
+			volume: 0.3, // Default volume (lowered to prevent cracking)
+			subtitles: [], // Array of { start, end, text, displayTime }
+			currentSubtitleIndex: -1,
+			srtOffset: 0, // In seconds
+			srtScale: 1.0, // Multiplier
+			scriptOffset: 0,
+			scriptScale: 1.0,
+			focusedScriptIndex: null // Script index to show on main screen
+		};
+
+		// --- Three.js Setup ---
+		const scene = new THREE.Scene();
+		scene.background = new THREE.Color(0x242424);
+
+		// Camera for the viewer
+		const viewerCamera = new THREE.PerspectiveCamera(
+			75,
+			window.innerWidth / window.innerHeight,
+			0.1,
+			1000
+		);
+		viewerCamera.position.set(0, 2, 5);
+		viewerCamera.lookAt(0, 1, 0);
+
+		const renderer = new THREE.WebGLRenderer({ antialias: true });
+		renderer.setPixelRatio(window.devicePixelRatio || 1);
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		// document.getElementById('app').appendChild(renderer.domElement); // Hide raw WebGL canvas
+
+		// Display Canvas (2D) for Post-processing effects
+		const displayCanvas = document.createElement('canvas');
+		const displayCtx = displayCanvas.getContext('2d');
+		displayCanvas.style.width = '100%';
+		displayCanvas.style.height = '100%';
+		displayCanvas.style.display = 'block';
+		document.getElementById('app').appendChild(displayCanvas);
+
+		function resizeDisplay() {
+			displayCanvas.width = window.innerWidth * (window.devicePixelRatio || 1);
+			displayCanvas.height = window.innerHeight * (window.devicePixelRatio || 1);
+			displayCtx.imageSmoothingEnabled = false;
+		}
+		resizeDisplay();
+
+		// Lighting
+		const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+		scene.add(ambientLight);
+
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+		directionalLight.position.set(5, 10, 7.5);
+		scene.add(directionalLight);
+
+		// Controls - use displayCanvas for events
+		const controls = new OrbitControls(viewerCamera, displayCanvas);
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.05;
+		controls.target.set(0, 1, 0);
+
+		// Helpers
+		const gridHelper = new THREE.GridHelper(CONFIG.gridSize, CONFIG.gridSize);
+		scene.add(gridHelper);
+
+		const axesHelper = new THREE.AxesHelper(CONFIG.axesSize);
+		scene.add(axesHelper);
+
+		// Vertical Grids
+		const verticalGridSize = CONFIG.gridSize;
+		const verticalGridHeight = 10;
+		const gridDivisions = 10;
+
+		const frontGridHelper = new THREE.GridHelper(verticalGridSize, gridDivisions, 0x444444, 0x333333);
+		frontGridHelper.rotation.x = Math.PI / 2;
+		frontGridHelper.position.set(0, verticalGridHeight / 2, -verticalGridSize / 2);
+		scene.add(frontGridHelper);
+
+		const leftGridHelper = new THREE.GridHelper(verticalGridSize, gridDivisions, 0x444444, 0x333333);
+		leftGridHelper.rotation.z = Math.PI / 2;
+		leftGridHelper.position.set(-verticalGridSize / 2, verticalGridHeight / 2, 0);
+		scene.add(leftGridHelper);
+
+		const rightGridHelper = new THREE.GridHelper(verticalGridSize, gridDivisions, 0x444444, 0x333333);
+		rightGridHelper.rotation.z = Math.PI / 2;
+		rightGridHelper.position.set(verticalGridSize / 2, verticalGridHeight / 2, 0);
+		scene.add(rightGridHelper);
+
+
+		// --- Camera Visualizer Class ---
+		class CameraVisualizer {
+			constructor(scene, color) {
+				this.scene = scene;
+				this.color = color;
+				this.group = new THREE.Group();
+				this.scene.add(this.group);
+
+				this.initMesh();
+				this.initMarkers();
+			}
+
+			initMesh() {
+				// Camera Body (Pyramid)
+				const camWidth = 0.5;
+				const camHeight = 0.3;
+				const camDepth = 1.0;
+				const geom = new THREE.BufferGeometry();
+				const vertices = new Float32Array([
+					// Top (Tip, TL, TR)
+					0, 0, 0, -camWidth, camHeight, -camDepth, camWidth, camHeight, -camDepth,
+					// Bottom (Tip, BR, BL)
+					0, 0, 0, camWidth, -camHeight, -camDepth, -camWidth, -camHeight, -camDepth,
+					// Left
+					0, 0, 0, -camWidth, -camHeight, -camDepth, -camWidth, camHeight, -camDepth,
+					// Right
+					0, 0, 0, camWidth, camHeight, -camDepth, camWidth, -camHeight, -camDepth,
+				]);
+				geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+				geom.computeVertexNormals();
+				geom.addGroup(0, 3, 0);
+				geom.addGroup(3, 3, 1);
+				geom.addGroup(6, 3, 2);
+				geom.addGroup(9, 3, 2);
+
+				const materials = [
+					new THREE.MeshBasicMaterial({ color: this.color, side: THREE.DoubleSide }), // Top - Main Color
+					new THREE.MeshBasicMaterial({ color: 0x0000FF, side: THREE.DoubleSide }), // Bottom - Blue (Fixed for orientation ref)
+					new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide, wireframe: true }), // Sides
+				];
+				const pyramid = new THREE.Mesh(geom, materials);
+				this.group.add(pyramid);
+
+				// Center Box
+				const bodyMesh = new THREE.Mesh(
+					new THREE.BoxGeometry(0.2, 0.2, 0.2),
+					new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
+				);
+				this.group.add(bodyMesh);
+
+				// Frustum Helper
+				this.frustumCamera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 100);
+				// this.cameraHelper = new THREE.CameraHelper(this.frustumCamera);
+				// Tint the helper with the camera color if possible, but CameraHelper uses fixed colors usually.
+				// We can try to set the color of the helper's material
+				// this.cameraHelper.material.color.setHex(this.color);
+				// this.scene.add(this.cameraHelper);
+			}
+
+			initMarkers() {
+				const arrowLength = 0.8;
+				const arrowColor = this.color;
+
+				// Ground Marker
+				this.groundMarker = new THREE.ArrowHelper(
+					new THREE.Vector3(0, 0, -1),
+					new THREE.Vector3(0, 0.01, 0),
+					arrowLength,
+					arrowColor,
+					0.3, 0.2
+				);
+				this.scene.add(this.groundMarker);
+
+				// Wall Markers
+				this.frontMarker = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 0), arrowLength, arrowColor, 0.3, 0.2);
+				this.scene.add(this.frontMarker);
+
+				this.leftMarker = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 0), arrowLength, arrowColor, 0.3, 0.2);
+				this.scene.add(this.leftMarker);
+
+				this.rightMarker = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 0), arrowLength, arrowColor, 0.3, 0.2);
+				this.scene.add(this.rightMarker);
+
+				// Crosshairs
+				this.groundFrame = this.createCrossHair();
+				this.scene.add(this.groundFrame);
+
+				this.frontFrame = this.createCrossHair();
+				this.scene.add(this.frontFrame);
+
+				this.leftFrame = this.createCrossHair();
+				this.scene.add(this.leftFrame);
+
+				this.rightFrame = this.createCrossHair();
+				this.scene.add(this.rightFrame);
+			}
+
+			createCrossHair() {
+				const group = new THREE.Group();
+				const material = new THREE.LineBasicMaterial({ color: 0x00FFFF, linewidth: 4 });
+				const size = 0.5;
+
+				const hLine = new THREE.Line(
+					new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-size, 0, 0), new THREE.Vector3(size, 0, 0)]),
+					material
+				);
+				const vLine = new THREE.Line(
+					new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -size, 0), new THREE.Vector3(0, size, 0)]),
+					material
+				);
+				group.add(hLine);
+				group.add(vLine);
+				return group;
+			}
+
+			update(pos, rot, fov) {
+				// Update main group
+				this.group.position.copy(pos);
+				this.group.quaternion.copy(rot);
+
+				// Update Frustum Helper Camera
+				this.frustumCamera.position.copy(pos);
+				this.frustumCamera.quaternion.copy(rot);
+				this.frustumCamera.fov = fov;
+				this.frustumCamera.updateProjectionMatrix();
+
+				// Calculate forward direction
+				const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
+
+				// Update Markers
+				// Ground
+				this.groundMarker.position.set(pos.x, 0.01, pos.z);
+				this.groundMarker.setDirection(forward);
+				this.groundFrame.position.set(pos.x, 0.02, pos.z);
+				this.groundFrame.quaternion.copy(rot);
+
+				// Front (XY plane at Z = -10)
+				const frontZ = -CONFIG.gridSize / 2;
+				this.frontMarker.position.set(pos.x, pos.y, frontZ + 0.01);
+				this.frontMarker.setDirection(forward);
+				this.frontFrame.position.set(pos.x, pos.y, frontZ + 0.02);
+				this.frontFrame.quaternion.copy(rot);
+
+				// Left (YZ plane at X = -10)
+				const leftX = -CONFIG.gridSize / 2;
+				this.leftMarker.position.set(leftX + 0.01, pos.y, pos.z);
+				this.leftMarker.setDirection(forward);
+				this.leftFrame.position.set(leftX + 0.02, pos.y, pos.z);
+				this.leftFrame.quaternion.copy(rot);
+				this.leftFrame.rotation.y = Math.PI / 2; // Base rotation for the plane
+
+				// Right (YZ plane at X = 10)
+				const rightX = CONFIG.gridSize / 2;
+				this.rightMarker.position.set(rightX - 0.01, pos.y, pos.z);
+				this.rightMarker.setDirection(forward);
+				this.rightFrame.position.set(rightX - 0.02, pos.y, pos.z);
+				this.rightFrame.quaternion.copy(rot);
+				this.rightFrame.rotation.y = Math.PI / 2;
+			}
+
+			dispose() {
+				this.scene.remove(this.group);
+				// this.scene.remove(this.cameraHelper);
+				this.scene.remove(this.groundMarker);
+				this.scene.remove(this.frontMarker);
+				this.scene.remove(this.leftMarker);
+				this.scene.remove(this.rightMarker);
+				this.scene.remove(this.groundFrame);
+				this.scene.remove(this.frontFrame);
+				this.scene.remove(this.leftFrame);
+				this.scene.remove(this.rightFrame);
+			}
+		}
+
+		// Static World Props (Orientation Markers)
+		const boxGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+		const redBox = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+		redBox.position.set(-2, 1, -5);
+		scene.add(redBox);
+
+		const blueBox = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: 0x0000ff }));
+		blueBox.position.set(2, 1, -5);
+		scene.add(blueBox);
+
+
+		// --- Preview Renderer ---
+		const previewRenderer = new THREE.WebGLRenderer({ antialias: true });
+		previewRenderer.setPixelRatio(window.devicePixelRatio || 1);
+		previewRenderer.setSize(CONFIG.previewWidth, CONFIG.previewHeight);
+		// previewRenderer.domElement is not appended to body, we use it offscreen
+
+		// --- Logic ---
+
+		async function identifyFile(file) {
+			const name = file.name.toLowerCase();
+			if (name.endsWith('.json')) return 'script';
+			if (name.match(/\.(ogg|mp3|wav|egg)$/i)) return 'music';
+			if (name.endsWith('.vrm') || name.endsWith('.nvrm')) return 'avatar';
+			if (name.endsWith('.srt')) return 'srt';
+
+			// Sniff content for unknown extensions (e.g. .txt)
+			try {
+				const text = await file.slice(0, 10000).text();
+
+				// Quick JSON check
+				if (text.trim().startsWith('{')) {
+					try {
+						// We check for "Movements" key (Beat Saber format)
+						if (text.includes('"Movements"') || text.includes('"movements"')) {
+							// Double check with partial parse if small or just assume
+							return 'script';
+						}
+					} catch (e) { }
+				}
+
+				// SRT check (Typical timestamp: 00:00:00,000 --> 00:00:00,000)
+				if (text.match(/\d{2}:\d{2}:\d{2}[,\.]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}[,\.]\d{3}/)) {
+					return 'srt';
+				}
+			} catch (e) { }
+
+			return 'unknown';
+		}
+
+		function init() {
+			setupUI();
+			animate();
+
+			// Default Avatar
+			createDefaultAvatar();
+
+			const vrmInput = document.getElementById('vrmInput');
+			const fileInput = document.getElementById('fileInput');
+			const musicInput = document.getElementById('musicInput');
+			const srtInput = document.getElementById('srtInput');
+			const overlay = document.getElementById('overlay');
+
+			// Global Drag & Drop Prevention (Stop browser from opening files)
+			window.addEventListener('dragover', function (e) {
+				e.preventDefault();
+			}, false);
+			window.addEventListener('drop', function (e) {
+				e.preventDefault();
+			}, false);
+
+			// Overlay Drag & Drop
+			let dragCounter = 0;
+
+			overlay.addEventListener('dragenter', (e) => {
+				e.preventDefault();
+				dragCounter++;
+				overlay.classList.add('dragover');
+			});
+
+			overlay.addEventListener('dragover', (e) => {
+				e.preventDefault();
+			});
+
+			overlay.addEventListener('dragleave', (e) => {
+				e.preventDefault();
+				dragCounter--;
+				if (dragCounter === 0) {
+					overlay.classList.remove('dragover');
+				}
+			});
+
+			overlay.addEventListener('drop', async (e) => {
+				e.preventDefault();
+				dragCounter = 0;
+				overlay.classList.remove('dragover');
+
+				const files = Array.from(e.dataTransfer.files);
+				const categorized = {
+					script: [],
+					music: [],
+					avatar: [],
+					srt: []
+				};
+
+				// Identify each file concurrently
+				await Promise.all(files.map(async file => {
+					const type = await identifyFile(file);
+					if (categorized[type]) {
+						categorized[type].push(file);
+					}
+				}));
+
+				const jsonFiles = categorized.script;
+				const musicFiles = categorized.music;
+				const vrmFiles = categorized.avatar;
+				const srtFiles = categorized.srt;
+
+				if (jsonFiles.length > 0) {
+					logToUI(`Identified ${jsonFiles.length} script(s)`);
+					fileInput.files = new DataTransfer().files; // Clear
+					const dt = new DataTransfer();
+					jsonFiles.forEach(f => dt.items.add(f));
+					fileInput.files = dt.files;
+					fileInput.dispatchEvent(new Event('change'));
+				}
+				if (musicFiles.length > 0) {
+					logToUI(`Identified ${musicFiles.length} music file(s)`);
+					musicInput.files = new DataTransfer().files; // Clear
+					const dt = new DataTransfer();
+					musicFiles.forEach(f => dt.items.add(f));
+					musicInput.files = dt.files;
+					musicInput.dispatchEvent(new Event('change'));
+				}
+				if (vrmFiles.length > 0) {
+					logToUI(`Identified ${vrmFiles.length} avatar file(s)`);
+					vrmInput.files = new DataTransfer().files; // Clear
+					const dt = new DataTransfer();
+					vrmFiles.forEach(f => dt.items.add(f));
+					vrmInput.files = dt.files;
+					vrmInput.dispatchEvent(new Event('change'));
+				}
+				if (srtFiles.length > 0) {
+					logToUI(`Identified ${srtFiles.length} SRT file(s)`);
+					const dt = new DataTransfer();
+					srtFiles.forEach(f => dt.items.add(f));
+					srtInput.files = dt.files;
+					srtInput.dispatchEvent(new Event('change'));
+				}
+			});
+
+			// Start Button logic
+			const startBtn = document.getElementById('startBtn');
+			startBtn.addEventListener('click', () => {
+				if (state.scripts.length === 0) {
+					alert("Please load at least one script first.");
+					return;
+				}
+
+				overlay.classList.add('hidden');
+				document.getElementById('backBtn').style.display = 'block';
+
+				// Optional: Wait a tiny bit or just start
+				setTimeout(() => {
+					state.isPlaying = true;
+					if (state.audio) {
+						state.audio.play();
+					}
+
+					// Re-create UI if needed (e.g. came back from Menu)
+					if (!pane) {
+						refreshUI();
+					} else {
+						pane.refresh();
+					}
+				}, 100);
+			});
+
+			vrmInput.addEventListener('change', (e) => {
+				const file = e.target.files[0];
+				if (file) {
+					document.getElementById('vrmStatus').innerText = `Selected: ${file.name}`;
+					document.getElementById('vrmStatus').style.color = '#4CAF50';
+					loadVRM(file);
+				}
+			});
+
+			fileInput.addEventListener('change', async (e) => {
+				const files = Array.from(e.target.files);
+				if (files.length > 0) {
+					document.getElementById('scriptStatus').innerText = `Selected: ${files.length} file(s)`;
+					document.getElementById('scriptStatus').style.color = '#4CAF50';
+					try {
+						await loadFiles(files);
+					} catch (err) {
+						console.error('Error loading files:', err);
+						document.getElementById('scriptStatus').innerText = 'Error loading files';
+						document.getElementById('scriptStatus').style.color = 'red';
+						alert('Error loading files. Check console for details.');
+					}
+				}
+			});
+
+			musicInput.addEventListener('change', (e) => {
+				const file = e.target.files[0];
+				if (file) {
+					logToUI(`Selected music: ${file.name}`);
+					document.getElementById('musicStatus').innerText = `Selected: ${file.name}`;
+					document.getElementById('musicStatus').style.color = '#4CAF50';
+					loadMusic(file);
+				}
+			});
+
+			srtInput.addEventListener('change', (e) => {
+				const file = e.target.files[0];
+				if (file) {
+					logToUI(`Selected SRT: ${file.name}`);
+					document.getElementById('srtStatus').innerText = `Selected: ${file.name}`;
+					document.getElementById('srtStatus').style.color = '#4CAF50';
+					loadSRT(file);
+				}
+			});
+		}
+
+		function createDefaultAvatar() {
+			if (state.avatarRoot) {
+				scene.remove(state.avatarRoot);
+			}
+			state.currentVRM = null;
+
+			const group = new THREE.Group();
+			const material = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.7 });
+
+			// Height ref: 1.6m
+			// Head: 25cm radius? (Diameter 0.5)
+			// Body: Cylinder
+
+			const headGeo = new THREE.SphereGeometry(0.12, 16, 16);
+			const head = new THREE.Mesh(headGeo, material);
+			head.position.y = 1.6 - 0.12;
+			group.add(head);
+
+			const bodyHeight = 1.36; // 1.6 - 0.24 (head diameter roughly)
+			const bodyGeo = new THREE.CylinderGeometry(0.15, 0.1, bodyHeight, 16);
+			const body = new THREE.Mesh(bodyGeo, material);
+			body.position.y = bodyHeight / 2;
+			group.add(body);
+
+			// T-pose arms indicating forward? or simple cylinder
+			// Let's add simple arms to show orientation (optional, but requested "Symbolic is fine")
+			const armGeo = new THREE.BoxGeometry(1.0, 0.05, 0.05);
+			const arms = new THREE.Mesh(armGeo, material);
+			arms.position.y = 1.35;
+			group.add(arms);
+
+			// Nose to indicate forward (-Z in Three.js world, matches convertPosition)
+			const noseGeo = new THREE.BoxGeometry(0.1, 0.05, 0.2);
+			const nose = new THREE.Mesh(noseGeo, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+			nose.position.set(0, 1.6 - 0.12, -0.2); // Pointing towards -Z
+			group.add(nose);
+
+			state.avatarRoot = group;
+			scene.add(state.avatarRoot);
+
+			// Apply current scale setting
+			updateAvatarScale();
+		}
+
+		function loadMusic(file) {
+			if (state.audio) {
+				state.audio.pause();
+				URL.revokeObjectURL(state.audio.src);
+			}
+			const url = URL.createObjectURL(file);
+			state.audio = new Audio(url);
+			state.audio.volume = state.volume;
+			state.audio.loop = true; // Loop the music
+
+			document.getElementById('musicStatus').innerText = `Loading: ${file.name}...`;
+
+			state.audio.addEventListener('loadedmetadata', () => {
+				const duration = state.audio.duration;
+				document.getElementById('musicStatus').innerText = `Loaded: ${file.name} (${duration.toFixed(2)}s)`;
+				document.getElementById('musicStatus').style.color = '#4CAF50';
+			});
+
+			state.audio.addEventListener('error', (e) => {
+				console.error("Audio load error", e);
+				document.getElementById('musicStatus').innerText = `Error loading: ${file.name}`;
+				document.getElementById('musicStatus').style.color = 'red';
+			});
+		}
+
+		function loadSRT(file) {
+			logToUI(`Reading SRT: ${file.name} (${file.size} bytes)`);
+			const reader = new FileReader();
+			reader.onload = (e) => {
+				const buffer = e.target.result;
+				const uint8 = new Uint8Array(buffer);
+
+				// Basic BOM detection for UTF-16 and UTF-8
+				let encoding = 'utf-8';
+				if (uint8[0] === 0xFF && uint8[1] === 0xFE) {
+					encoding = 'utf-16le';
+				} else if (uint8[0] === 0xFE && uint8[1] === 0xFF) {
+					encoding = 'utf-16be';
+				} else {
+					// Heuristic: If there are many null bytes, it's likely UTF-16
+					let nulls = 0;
+					for (let i = 0; i < Math.min(uint8.length, 100); i++) {
+						if (uint8[i] === 0) nulls++;
+					}
+					if (nulls > 10) encoding = 'utf-16le';
+				}
+
+				try {
+					const decoder = new TextDecoder(encoding);
+					const text = decoder.decode(buffer);
+					logToUI(`SRT content read, length: ${text.length} (Encoding: ${encoding})`);
+					state.subtitles = parseSRT(text);
+				} catch (err) {
+					logToUI(`Decode error: ${err}`, 'red');
+					alert(`Decoding error: ${err}`);
+				}
+			};
+			reader.onerror = (err) => {
+				logToUI(`SRT read error: ${err}`, 'red');
+				alert(`File reading error: ${err}`);
+			};
+			reader.readAsArrayBuffer(file);
+		}
+
+		function parseSRT(data) {
+			const items = [];
+
+			// Flexible time parser: 00:00:00,000 or 00:00:00.000 or 00:00,000
+			const timeToSeconds = (t) => {
+				t = t.trim();
+				const parts = t.split(/[:,.]/);
+				if (parts.length === 0) return 0;
+
+				// Handle HH:MM:SS,MS or MM:SS,MS
+				let h = 0, m = 0, s = 0, ms = 0;
+
+				if (parts.length >= 4) {
+					// HH, MM, SS, MS
+					h = parseInt(parts[0], 10);
+					m = parseInt(parts[1], 10);
+					s = parseInt(parts[2], 10);
+					ms = parseInt(parts[3], 10);
+				} else if (parts.length === 3) {
+					// MM, SS, MS  OR  HH, MM, SS (no MS) -> Ambiguous but usually SRT has MS
+					// Standard SRT is HH:MM:SS,MS (4 parts with Separator)
+					// But standard split by [:,.] gives 4 parts for 00:00:01,000 -> [00, 00, 01, 000]
+
+					// If input was 00:00:01 (no ms) -> [00, 00, 01]
+					h = parseInt(parts[0], 10);
+					m = parseInt(parts[1], 10);
+					s = parseInt(parts[2], 10);
+				}
+
+				return h * 3600 + m * 60 + s + ms / 1000;
+			};
+
+			const secondsToDisplay = (secs) => {
+				const h = Math.floor(secs / 3600);
+				const m = Math.floor((secs % 3600) / 60);
+				const s = Math.floor(secs % 60);
+				const ms1 = Math.floor((secs % 1) * 10);
+				return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms1}`;
+			};
+
+			// Try parsing as JSON first
+			try {
+				const trimmed = data.trim();
+				if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+					const json = JSON.parse(trimmed);
+					const list = Array.isArray(json) ? json : [json];
+					list.forEach(item => {
+						if (item.start !== undefined && item.end !== undefined) {
+							let start = typeof item.start === 'string' ? timeToSeconds(item.start) : Number(item.start);
+							let end = typeof item.end === 'string' ? timeToSeconds(item.end) : Number(item.end);
+							if (isNaN(start)) start = 0;
+							if (isNaN(end)) end = 0;
+							items.push({
+								start: start,
+								end: end,
+								text: item.text || "",
+								displayTime: `[${secondsToDisplay(start)} - ${secondsToDisplay(end)}]`
+							});
+						}
+					});
+				}
+			} catch (e) {
+				console.log("Not a JSON file or failed to parse JSON:", e);
+			}
+
+			if (items.length === 0) {
+				// Scanning Parser (Robust)
+				const lines = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+				// Simple check: any line with --> is a timestamp line
+				const isTimeLine = (l) => l.includes('-->');
+				const extractTimes = (l) => {
+					const parts = l.split('-->');
+					if (parts.length === 2) return [parts[0].trim(), parts[1].trim()];
+					return null;
+				};
+
+				let currentStart = null;
+				let currentEnd = null;
+				let currentText = [];
+
+				for (let i = 0; i < lines.length; i++) {
+					const line = lines[i].trim();
+
+					// Check for timestamp line
+					if (isTimeLine(line)) {
+						const times = extractTimes(line);
+						if (times) {
+							// Push previous if exists
+							if (currentStart !== null && currentText.length > 0) {
+								items.push({
+									start: currentStart,
+									end: currentEnd,
+									text: currentText.join('\n').trim(),
+									displayTime: `[${secondsToDisplay(currentStart)} - ${secondsToDisplay(currentEnd)}]`
+								});
+							}
+
+							currentStart = timeToSeconds(times[0]);
+							currentEnd = timeToSeconds(times[1]);
+							currentText = [];
+						}
+					} else if (currentStart !== null) {
+						// Content or Index
+						// If strictly digits, assumption is it's an index for the NEXT block
+						// But we only care if we are inside a block.
+						// If we are currently collecting text, a pure number line usually marks the END of this block (start of next index)
+						// BUT sometimes text contains numbers. 
+						// Safer strategy: Don't treat number lines as text separators unless they are followed by timestamps.
+						// Since we trigger on Timestamp line, we can just accumulate everything else as text.
+						// We just filter out the specific "Index" line that appears right before a timestamp, but since we scan forward, we handled "Push previous" already.
+						// The only case is ensuring we don't accidentally add the index of *this* block to *this* block's text? 
+						// No, index comes BEFORE timestamp. We effectively ignore lines before the first timestamp.
+						// What about index of Next block appearing as text of Current block? 
+						// Yes, that is a risk.
+						if (/^\d+$/.test(line)) {
+							// Likely an index line. Ignore it?
+							// If song lyrics are "1 2 3", this breaks. 
+							// However, in SRT structure, Index is usually its own line.
+							// We'll ignore it.
+						} else if (line) {
+							currentText.push(line);
+						}
+					}
+				}
+
+				// Push last
+				if (currentStart !== null && currentText.length > 0) {
+					items.push({
+						start: currentStart,
+						end: currentEnd,
+						text: currentText.join('\n').trim(),
+						displayTime: `[${secondsToDisplay(currentStart)} - ${secondsToDisplay(currentEnd)}]`
+					});
+				}
+			}
+
+			console.log("Parsed SRT items:", items.length);
+			if (items.length > 0) {
+				console.log("First item:", items[0]);
+				const lastItem = items[items.length - 1];
+				const duration = lastItem.end;
+				document.getElementById('srtStatus').innerText = `Loaded: ${items.length} segments (${duration.toFixed(2)}s)`;
+				document.getElementById('srtStatus').style.color = '#4CAF50';
+
+				const subDisplay = document.getElementById('subtitleDisplay');
+				subDisplay.innerText = `Lyrics Loaded: ${items.length} lines`;
+				subDisplay.style.display = 'block';
+				subDisplay.style.color = '#4CAF50';
+				setTimeout(() => {
+					subDisplay.style.color = 'white';
+					if (!state.isPlaying) subDisplay.style.display = 'none';
+				}, 3000);
+
+			} else {
+				console.warn("Parsed 0 items. Content check:", data.substring(0, 100));
+				document.getElementById('srtStatus').innerText = `Failed to parse subtitles(0 items)`;
+				document.getElementById('srtStatus').style.color = 'orange';
+				alert(`Failed to parse SRT file.\n\nDebug Info (First 100 chars):\n${data.substring(0, 100)}\n\nCheck if this text looks legible. If it looks like '', it might be an encoding issue (UTF-16/Shift-JIS).`);
+			}
+
+			return items;
+		}
+
+		function loadVRM(file) {
+			const url = URL.createObjectURL(file);
+			const loader = new GLTFLoader();
+			loader.register((parser) => {
+				return new VRMLoaderPlugin(parser);
+			});
+
+			loader.load(
+				url,
+				(gltf) => {
+					const vrm = gltf.userData.vrm;
+
+					if (state.avatarRoot) {
+						scene.remove(state.avatarRoot);
+						if (state.currentVRM) {
+							VRMUtils.deepDispose(state.currentVRM.scene);
+						}
+					}
+
+					state.currentVRM = vrm;
+					state.avatarRoot = vrm.scene;
+					scene.add(vrm.scene);
+
+					// Face -Z (Default back-facing for game, 0 rotation means facing -Z in Three.js coordinate space here)
+					vrm.scene.rotation.y = 0;
+
+					console.log('VRM Loaded');
+					updateAvatarScale();
+				},
+				(progress) => console.log('Loading VRM...', 100.0 * (progress.loaded / progress.total), '%'),
+				(error) => console.error(error)
+			);
+		}
+
+		function updateAvatarScale() {
+			if (!state.avatarRoot) return;
+
+			const root = state.avatarRoot;
+			root.scale.set(1, 1, 1);
+
+			// Reset rotation if it was modified for scaling calculation purposes (not needed here)
+			// But we need unscaled bounds.
+
+			// Get current height (y-offset of head + some buffer or bounding box?)
+			// A simple approximation is getting the bounding box
+			const box = new THREE.Box3().setFromObject(root);
+			const currentHeight = box.max.y - box.min.y;
+
+			if (currentHeight > 0) {
+				const scale = state.avatarHeight / currentHeight;
+				root.scale.set(scale, scale, scale);
+				console.log(`Scaled avatar to ${state.avatarHeight} m(Scale factor: ${scale})`);
+			}
+		}
+
+		async function loadFiles(files) {
+			// Clear existing
+			state.scripts.forEach(s => s.visualizer.dispose());
+			state.scripts = [];
+
+			const promises = files.map(file => {
+				return new Promise((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = (e) => {
+						try {
+							const data = JSON.parse(e.target.result);
+							resolve({ name: file.name, data });
+						} catch (err) {
+							reject(err);
+						}
+					};
+					reader.readAsText(file);
+				});
+			});
+
+			const results = await Promise.all(promises);
+
+			let maxDuration = 0;
+
+			results.forEach((res, index) => {
+				const rawMovements = res.data.Movements;
+				let accumulatedTime = 0;
+
+				// Pre-calculate timing
+				const processedMovements = rawMovements.map(mov => {
+					const delay = mov.Delay || 0;
+					const duration = mov.Duration || 0;
+					const startTime = accumulatedTime;
+					const activeStartTime = startTime + delay;
+					const endTime = activeStartTime + duration;
+
+					accumulatedTime = endTime;
+
+					return {
+						start: startTime,
+						activeStart: activeStartTime,
+						end: endTime,
+						data: mov
+					};
+				});
+
+				const duration = accumulatedTime;
+				if (duration > maxDuration) maxDuration = duration;
+
+				const color = CONFIG.colors[index % CONFIG.colors.length];
+				const visualizer = new CameraVisualizer(scene, color);
+
+				state.scripts.push({
+					name: res.name,
+					movements: processedMovements,
+					duration: duration,
+					visualizer: visualizer,
+					status: {
+						pos: "0.00, 0.00, 0.00",
+						rot: "0.0, 0.0, 0.0",
+						fov: 0,
+						effect: {
+							dof: "-",
+							wipe: "-",
+							outline: "-",
+							_dofBlurRadius: 0,
+							_wipeProgress: 0,
+							_wipeCenter: { x: 0, y: 0 },
+							_outlineActive: false,
+							_outlineOnly: 0,
+							_outlineColor: { r: 0, g: 255, b: 255 },
+							_outlineBackgroundColor: { r: 0, g: 0, b: 0 },
+							glitch: "-",
+							_glitchActive: false,
+							_glitchColorGap: 0,
+							_glitchScale: 1,
+							_glitchFrequency: 0.1,
+							_glitchLineSpeed: 5,
+							_glitchLineSize: 0.01,
+							_glitchFrameRate: 15
+						}
+					}, // For UI
+					previewCtx: null // Will be set in refreshUI
+				});
+			});
+
+			state.totalDuration = maxDuration;
+			console.log(`Loaded ${state.scripts.length} scripts.Max duration: ${state.totalDuration} `);
+
+			const totalMovements = state.scripts.reduce((acc, script) => acc + script.movements.length, 0);
+			document.getElementById('scriptStatus').innerText = `Loaded: ${state.scripts.length} files, ${totalMovements} segments (${state.totalDuration.toFixed(2)}s)`;
+			document.getElementById('scriptStatus').style.color = '#4CAF50';
+
+			refreshUI();
+		}
+
+		function convertPosition(pos) {
+			return new THREE.Vector3(pos.x, pos.y, -pos.z);
+		}
+
+		function convertRotation(rot) {
+			const euler = new THREE.Euler(
+				THREE.MathUtils.degToRad(-rot.x),
+				THREE.MathUtils.degToRad(-rot.y),
+				THREE.MathUtils.degToRad(-rot.z),
+				'YXZ'
+			);
+			return new THREE.Quaternion().setFromEuler(euler);
+		}
+
+		function getMovementAtTime(movements, time) {
+			const item = movements.find(m => time >= m.start && time < m.end);
+
+			if (item) {
+				// If we are in the "Active" part of the movement:
+				if (time >= item.activeStart && time < item.end) {
+					return {
+						movement: item.data,
+						progress: (time - item.activeStart) / item.data.Duration
+					};
+				} else {
+					// In delay period - return start of this movement (progress 0)
+					return {
+						movement: item.data,
+						progress: 0
+					};
+				}
+			}
+
+			// Clamp to last
+			if (movements.length > 0 && time >= movements[movements.length - 1].end) {
+				const lastMov = movements[movements.length - 1];
+				return {
+					movement: lastMov.data,
+					progress: 1.0
+				};
+			}
+			return null;
+		}
+
+
+		// Laplacian Filter for Edge Detection
+		function applyOutlineEffect(ctx, width, height, settings) {
+			const imageData = ctx.getImageData(0, 0, width, height);
+			const data = imageData.data;
+			const output = new Uint8ClampedArray(data.length);
+
+			const { outlineOnly, outlineColor, outlineBackgroundColor } = settings;
+			const threshold = 30; // Sensitivity
+
+			for (let y = 1; y < height - 1; y++) {
+				for (let x = 1; x < width - 1; x++) {
+					const idx = (y * width + x) * 4;
+
+					let maxEdge = 0;
+					for (let c = 0; c < 3; c++) { // RGB
+						const center = data[idx + c];
+						const up = data[((y - 1) * width + x) * 4 + c];
+						const down = data[((y + 1) * width + x) * 4 + c];
+						const left = data[(y * width + (x - 1)) * 4 + c];
+						const right = data[(y * width + (x + 1)) * 4 + c];
+
+						let val = Math.abs(4 * center - up - down - left - right);
+						if (val > maxEdge) maxEdge = val;
+					}
+
+					if (maxEdge > threshold) {
+						// Edge detected: Use Outline Color
+						output[idx] = outlineColor.r;
+						output[idx + 1] = outlineColor.g;
+						output[idx + 2] = outlineColor.b;
+					} else {
+						// No edge: Mix original with Background Color based on outlineOnly
+						output[idx] = data[idx] * (1 - outlineOnly) + outlineBackgroundColor.r * outlineOnly;
+						output[idx + 1] = data[idx + 1] * (1 - outlineOnly) + outlineBackgroundColor.g * outlineOnly;
+						output[idx + 2] = data[idx + 2] * (1 - outlineOnly) + outlineBackgroundColor.b * outlineOnly;
+					}
+					output[idx + 3] = 255; // Alpha
+				}
+			}
+			ctx.putImageData(new ImageData(output, width, height), 0, 0);
+		}
+
+		function applyGlitchEffect(ctx, width, height, settings, time) {
+			const { colorGap, glitchScale, frequency, lineSpeed, lineSize, frameRate } = settings;
+
+			// Pseudo-random based on time and frameRate
+			const frame = Math.floor(time * (frameRate || 15));
+			const rand = (s) => {
+				const x = Math.sin(s) * 43758.5453123;
+				return x - Math.floor(x);
+			};
+
+			// 1. Horizontal Jitter (Slicing) - Randomly shift bars of the image
+			if (rand(frame) < frequency) {
+				const numSlices = 4 + Math.floor(rand(frame + 1) * 8);
+				const tempCanvas = document.createElement('canvas');
+				tempCanvas.width = width;
+				tempCanvas.height = height;
+				const tCtx = tempCanvas.getContext('2d');
+				tCtx.drawImage(ctx.canvas, 0, 0);
+
+				for (let i = 0; i < numSlices; i++) {
+					const sliceY = rand(frame + i * 2) * height;
+					const sliceH = (0.05 + rand(frame + i * 3) * 0.15) * height;
+					const xOffset = (rand(frame + i * 4) - 0.5) * 40 * glitchScale;
+
+					ctx.drawImage(tempCanvas, 0, sliceY, width, sliceH, xOffset, sliceY, width, sliceH);
+				}
+			}
+
+			// 2. RGB Split
+			if (colorGap > 0) {
+				const gapPx = Math.max(1, Math.round(colorGap * width * 0.1)); // Adjusted scaling for more natural glitch
+				const img = ctx.getImageData(0, 0, width, height);
+				const src = img.data;
+				const out = new Uint8ClampedArray(src);
+
+				for (let y = 0; y < height; y++) {
+					for (let x = 0; x < width; x++) {
+						const idx = (y * width + x) * 4;
+						const rx = x - gapPx;
+						if (rx >= 0) out[idx] = src[(y * width + rx) * 4];
+						const bx = x + gapPx;
+						if (bx < width) out[idx + 2] = src[(y * width + bx) * 4 + 2];
+					}
+				}
+				ctx.putImageData(new ImageData(out, width, height), 0, 0);
+			}
+
+			// 3. Scanlines (Dynamic lines)
+			if (lineSize > 0) {
+				ctx.save();
+				ctx.beginPath();
+				ctx.strokeStyle = `rgba(0, 0, 0, ${0.1 + (glitchScale * 0.05)})`;
+				ctx.lineWidth = Math.max(1, lineSize * 10);
+				const lineSpacing = 8;
+				const lineOffset = (time * 60 * (lineSpeed || 5)) % height;
+				for (let y = -height; y < height * 2; y += lineSpacing) {
+					const py = y + lineOffset;
+					if (py >= 0 && py < height) {
+						ctx.moveTo(0, py);
+						ctx.lineTo(width, py);
+					}
+				}
+				ctx.stroke();
+				ctx.restore();
+			}
+		}
+
+
+		function updateCameraObjects(adjustedTime) {
+			state.scripts.forEach(script => {
+				const current = getMovementAtTime(script.movements, adjustedTime);
+
+				if (current) {
+					const { movement, progress } = current;
+
+					// Interpolate
+					const startPos = convertPosition(movement.StartPos);
+					const endPos = convertPosition(movement.EndPos);
+					const currentPos = new THREE.Vector3().lerpVectors(startPos, endPos, progress);
+
+					const startRot = convertRotation(movement.StartRot);
+					const endRot = convertRotation(movement.EndRot);
+					const currentRot = new THREE.Quaternion().slerpQuaternions(startRot, endRot, progress);
+
+					const startFOV = movement.StartPos.FOV || 60;
+					const endFOV = movement.EndPos.FOV || 60;
+					const currentFOV = THREE.MathUtils.lerp(startFOV, endFOV, progress);
+
+					// Update Visualizer
+					script.visualizer.update(currentPos, currentRot, currentFOV);
+
+					// Update Status for UI (Original Script values)
+					const px = movement.StartPos.x + (movement.EndPos.x - movement.StartPos.x) * progress;
+					const py = movement.StartPos.y + (movement.EndPos.y - movement.StartPos.y) * progress;
+					const pz = movement.StartPos.z + (movement.EndPos.z - movement.StartPos.z) * progress;
+					script.status.pos = `${px.toFixed(2)}, ${py.toFixed(2)}, ${pz.toFixed(2)}`;
+
+					const rx = movement.StartRot.x + (movement.EndRot.x - movement.StartRot.x) * progress;
+					const ry = movement.StartRot.y + (movement.EndRot.y - movement.StartRot.y) * progress;
+					const rz = movement.StartRot.z + (movement.EndRot.z - movement.StartRot.z) * progress;
+					script.status.rot = `${rx.toFixed(1)}, ${ry.toFixed(1)}, ${rz.toFixed(1)}`;
+
+					script.status.fov = parseFloat(currentFOV.toFixed(1));
+
+					// Update CameraEffect for UI
+					if (movement.CameraEffect) {
+						const fx = movement.CameraEffect;
+
+						// DoF
+						let dofStr = "Off";
+						let blurVal = 0;
+						if (fx.enableDoF) {
+							const startDoF = fx.StartDoFEffect || fx.StartDoF;
+							const endDoF = fx.EndDoFEffect || fx.EndDoF;
+							blurVal = THREE.MathUtils.lerp(startDoF?.dofBlurRadius || 0, endDoF?.dofBlurRadius || 0, progress);
+							dofStr = `Blur:${blurVal.toFixed(1)}`;
+						}
+						script.status.effect.dof = dofStr;
+						script.status.effect._dofBlurRadius = blurVal;
+
+						// Wipe
+						let wipeStr = fx.WipeType || fx.wipeType || "None";
+						let wipeProg = 0;
+						let wipeCX = 0, wipeCY = 0;
+						if (wipeStr !== "None") {
+							const startWipe = fx.StartWipeEffect || fx.StartWipe;
+							const endWipe = fx.EndWipeEffect || fx.EndWipe;
+							wipeProg = THREE.MathUtils.lerp(startWipe?.wipeProgress || 0, endWipe?.wipeProgress || 0, progress);
+							wipeStr += `(${(wipeProg * 100).toFixed(0)}%)`;
+
+							wipeCX = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.x || 0, endWipe?.wipeCircleCenter?.x || 0, progress);
+							wipeCY = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.y || 0, endWipe?.wipeCircleCenter?.y || 0, progress);
+						}
+						script.status.effect.wipe = wipeStr;
+						script.status.effect._wipeProgress = wipeProg;
+						script.status.effect._wipeCenter.x = wipeCX;
+						script.status.effect._wipeCenter.y = wipeCY;
+
+						// Outline
+						let outlineActive = fx.enableOutlineEffect || fx.EnableOutlineEffect || false;
+						let outlineOnly = fx.outlineEffectOnly !== undefined ? fx.outlineEffectOnly : (fx.outlineOnly || 0);
+
+						const parseColor = (obj, key) => {
+							if (!obj) return null;
+							// Check both camelCase and PascalCase
+							let c = obj[key] || obj[key.charAt(0).toUpperCase() + key.slice(1)];
+							if (!c) return { r: 0, g: 0, b: 0 };
+
+							return {
+								r: (c.r > 1 ? c.r : c.r * 255) || 0,
+								g: (c.g > 1 ? c.g : c.g * 255) || 0,
+								b: (c.b > 1 ? c.b : c.b * 255) || 0
+							};
+						};
+
+						const lerpColor = (startObj, endObj, key, p) => {
+							const p1 = parseColor(startObj, key) || { r: 255, g: 255, b: 255 }; // Default to white for outline
+							const p2 = parseColor(endObj, key) || p1;
+							return {
+								r: p1.r + (p2.r - p1.r) * p,
+								g: p1.g + (p2.g - p1.g) * p,
+								b: p1.b + (p2.b - p1.b) * p
+							};
+						};
+
+						let outColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineColor', progress);
+						let bgColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineBackgroundColor', progress);
+
+						script.status.effect.outline = outlineActive ? `On (Mix:${(outlineOnly * 100).toFixed(0)}%, R:${Math.round(outColor.r)} G:${Math.round(outColor.g)} B:${Math.round(outColor.b)})` : "Off";
+						script.status.effect._outlineActive = outlineActive;
+						script.status.effect._outlineOnly = outlineOnly;
+						script.status.effect._outlineColor = outColor;
+						script.status.effect._outlineBackgroundColor = bgColor;
+
+						// Glitch
+						let glitchActive = fx.EnableGlitchEffect || fx.enableGlitchEffect || false;
+						let glitchGap = 0;
+						let glitchScale = 1;
+						let glitchFreq = 0.1;
+						let glitchLineSpeed = 5;
+						let glitchLineSize = 0.01;
+						let glitchFrameRate = 15;
+						if (glitchActive) {
+							const startGlitch = fx.StartGlitchEffect || fx.StartGlitch;
+							const endGlitch = fx.EndGlitchEffect || fx.EndGlitch;
+
+							const getGProp = (obj, key) => {
+								if (!obj) return undefined;
+								const pKey = key.charAt(0).toUpperCase() + key.slice(1);
+								const gKey = "Glitch" + pKey;
+								if (obj[gKey] !== undefined) return obj[gKey];
+								if (obj[pKey] !== undefined) return obj[pKey];
+								return obj[key];
+							};
+
+							glitchGap = THREE.MathUtils.lerp(getGProp(startGlitch, 'colorGap') ?? 0, getGProp(endGlitch, 'colorGap') ?? 0, progress);
+							glitchScale = THREE.MathUtils.lerp(getGProp(startGlitch, 'glitchScale') ?? 1, getGProp(endGlitch, 'glitchScale') ?? 1, progress);
+							glitchFreq = THREE.MathUtils.lerp(getGProp(startGlitch, 'frequency') ?? 0.1, getGProp(endGlitch, 'frequency') ?? 0.1, progress);
+							glitchLineSpeed = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSpeed') ?? 5, getGProp(endGlitch, 'lineSpeed') ?? 5, progress);
+							glitchLineSize = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSize') ?? 0.01, getGProp(endGlitch, 'lineSize') ?? 0.01, progress);
+							glitchFrameRate = THREE.MathUtils.lerp(getGProp(startGlitch, 'frameRate') ?? 15, getGProp(endGlitch, 'frameRate') ?? 15, progress);
+						}
+						script.status.effect.glitch = glitchActive ? `On (Gap:${glitchGap.toFixed(2)}, Freq:${glitchFreq.toFixed(1)})` : "Off";
+						script.status.effect._glitchActive = glitchActive;
+						script.status.effect._glitchColorGap = glitchGap;
+						script.status.effect._glitchScale = glitchScale;
+						script.status.effect._glitchFrequency = glitchFreq;
+						script.status.effect._glitchLineSpeed = glitchLineSpeed;
+						script.status.effect._glitchLineSize = glitchLineSize;
+						script.status.effect._glitchFrameRate = glitchFrameRate;
+					} else {
+						script.status.effect.dof = "-";
+						script.status.effect.wipe = "-";
+						script.status.effect.outline = "-";
+						script.status.effect._dofBlurRadius = 0;
+						script.status.effect._wipeProgress = 0;
+						script.status.effect._outlineActive = false;
+						script.status.effect._outlineOnly = 0;
+						script.status.effect._outlineColor = { r: 0, g: 255, b: 255 };
+						script.status.effect._outlineBackgroundColor = { r: 0, g: 0, b: 0 };
+					}
+				}
+			});
+		}
+
+		// --- UI ---
+		let pane;
+		function setupUI() {
+			pane = new Pane({ title: 'Controls' });
+			// Initial setup, will be refreshed on load
+			addGlobalControls();
+			addSyncControls();
+
+			// CSS for the preview
+			const style = document.createElement('style');
+			style.innerHTML = `
+				.tp-dfwv {
+					width: 300px !important; 
+				}
+				.camera-preview-container {
+					margin-top: 8px;
+					margin-bottom: 8px;
+					display: flex;
+					justify-content: center;
+					background: #000;
+					border: 1px solid #444;
+					border-radius: 4px;
+					overflow: hidden;
+				}
+				.camera-preview-canvas {
+					width: 100%;
+					height: auto;
+					display: block;
+					cursor: pointer;
+					transition: border 0.2s;
+					border: 2px solid transparent;
+				}
+				.camera-preview-canvas.focused-preview {
+					border: 2px solid #00FFFF;
+					box-shadow: 0 0 10px #00FFFF;
+				}
+			`;
+			document.head.appendChild(style);
+		}
+
+		function refreshUI() {
+			if (pane) {
+				const oldPane = pane;
+				pane = null; // Prevent use by animate loop
+				oldPane.dispose();
+			}
+			pane = new Pane({ title: 'Controls' });
+
+			addGlobalControls();
+			addSyncControls();
+
+			// Add folder for each script
+			state.scripts.forEach((script, index) => {
+				const folder = pane.addFolder({ title: `${script.name} `, expanded: index === 0 });
+
+				// Inject Preview Canvas
+				const container = document.createElement('div');
+				container.classList.add('camera-preview-container');
+
+				const canvas = document.createElement('canvas');
+				canvas.width = CONFIG.previewWidth * (window.devicePixelRatio || 1);
+				canvas.height = CONFIG.previewHeight * (window.devicePixelRatio || 1);
+				canvas.classList.add('camera-preview-canvas');
+				if (state.focusedScriptIndex === index) {
+					canvas.classList.add('focused-preview');
+				}
+
+				canvas.addEventListener('click', () => {
+					if (state.focusedScriptIndex === index) {
+						state.focusedScriptIndex = null;
+					} else {
+						state.focusedScriptIndex = index;
+					}
+					refreshUI(); // To update visual indicator
+				});
+
+				container.appendChild(canvas);
+
+				// Tweakpane hack: Append to the folder's element
+				// We access the element directly (v4 API)
+				// .tp-fldv_c is the standard class for folder content container in Tweakpane
+				const contentContainer = folder.element.querySelector('.tp-fldv_c') || folder.element.lastElementChild;
+				if (contentContainer) {
+					contentContainer.prepend(container);
+				} else {
+					console.warn('Could not find Tweakpane folder container');
+				}
+
+				script.previewCtx = canvas.getContext('2d');
+
+				folder.addBinding(script.status, 'pos', { readonly: true, label: 'Pos (XYZ)' });
+				folder.addBinding(script.status, 'rot', { readonly: true, label: 'Rot (P/Y/R)' });
+				folder.addBinding(script.status, 'fov', { readonly: true, label: 'FOV' });
+
+				const fxFolder = folder.addFolder({ title: 'Camera Effects', expanded: false });
+				fxFolder.addBinding(script.status.effect, 'dof', { readonly: true, label: 'DoF' });
+				fxFolder.addBinding(script.status.effect, 'wipe', { readonly: true, label: 'Wipe' });
+				fxFolder.addBinding(script.status.effect, 'outline', { readonly: true, label: 'Outline' });
+				fxFolder.addBinding(script.status.effect, 'glitch', { readonly: true, label: 'Glitch' });
+			});
+		}
+
+		function addGlobalControls() {
+			pane.addBinding(state, 'currentTime', {
+				min: 0,
+				max: state.totalDuration > 0 ? state.totalDuration : 10,
+				label: 'Time',
+			}).on('change', () => {
+				if (!state.isPlaying) {
+					const scriptTime = (state.currentTime + state.scriptOffset) * state.scriptScale;
+					updateCameraObjects(scriptTime);
+				}
+				if (state.audio) {
+					state.audio.currentTime = state.currentTime;
+				}
+			});
+
+			const btn = pane.addButton({ title: 'Play / Pause' });
+			btn.on('click', () => {
+				if (state.scripts.length > 0 && !overlay.classList.contains('hidden')) {
+					overlay.classList.add('hidden');
+				}
+				state.isPlaying = !state.isPlaying;
+				if (state.audio) {
+					if (state.isPlaying) {
+						state.audio.play();
+					} else {
+						state.audio.pause();
+					}
+				}
+			});
+
+			pane.addBinding(state, 'playbackSpeed', {
+				min: 0.1,
+				max: 5.0,
+			}).on('change', () => {
+				if (state.audio) {
+					state.audio.playbackRate = state.playbackSpeed;
+				}
+			});
+
+			pane.addBinding(state, 'volume', {
+				min: 0.0,
+				max: 1.0,
+				label: 'Volume'
+			}).on('change', () => {
+				if (state.audio) {
+					state.audio.volume = state.volume;
+				}
+			});
+
+			pane.addBinding(state, 'avatarHeight', {
+				min: 0.5,
+				max: 3.0,
+				label: 'Avatar Ht'
+			}).on('change', () => {
+				updateAvatarScale();
+			});
+
+			pane.addBlade({ view: 'separator' });
+			pane.addButton({ title: 'Add Lyrics (.srt)' }).on('click', () => {
+				const input = document.createElement('input');
+				input.type = 'file';
+				input.accept = '.srt';
+				input.onchange = (e) => {
+					const file = e.target.files[0];
+					if (file) loadSRT(file);
+				};
+				input.click();
+			});
+		}
+
+		function addSyncControls() {
+			const folder = pane.addFolder({ title: 'Sync Settings', expanded: false });
+
+			const scriptFolder = folder.addFolder({ title: 'Script Sync' });
+			scriptFolder.addBinding(state, 'scriptOffset', { min: -10, max: 10, step: 0.1, label: 'Offset (sec)' }).on('change', () => {
+				if (!state.isPlaying) {
+					const scriptTime = (state.currentTime + state.scriptOffset) * state.scriptScale;
+					updateCameraObjects(scriptTime);
+				}
+			});
+			scriptFolder.addBinding(state, 'scriptScale', { min: 0.5, max: 2.0, step: 0.01, label: 'Scale' }).on('change', () => {
+				if (!state.isPlaying) {
+					const scriptTime = (state.currentTime + state.scriptOffset) * state.scriptScale;
+					updateCameraObjects(scriptTime);
+				}
+			});
+
+			const srtFolder = folder.addFolder({ title: 'SRT Sync' });
+			srtFolder.addBinding(state, 'srtOffset', { min: -10, max: 10, step: 0.1, label: 'Offset (sec)' });
+			srtFolder.addBinding(state, 'srtScale', { min: 0.5, max: 2.0, step: 0.01, label: 'Scale' });
+		}
+
+		// --- Loop ---
+		let lastFrameTime = performance.now();
+		let frameCount = 0;
+		let currentPreviewIndex = 0;
+
+		// Back Button Logic
+		document.getElementById('backBtn').addEventListener('click', () => {
+			state.isPlaying = false;
+
+			// Stop Audio
+			if (state.audio) {
+				state.audio.pause();
+				state.audio.currentTime = 0;
+			}
+
+			// Show Overlay
+			const overlay = document.getElementById('overlay');
+			overlay.classList.remove('hidden');
+			overlay.style.display = ''; // Clear inline style to let CSS handle it
+
+			document.getElementById('backBtn').style.display = 'none';
+
+			// Hide subtitles
+			document.getElementById('subtitleDisplay').style.display = 'none';
+
+			// Reset UI components
+			if (pane) {
+				const oldPane = pane;
+				pane = null;
+				oldPane.dispose();
+			}
+
+			state.currentTime = 0;
+			state.focusedScriptIndex = null;
+			state.currentSubtitleIndex = -1;
+
+			// Reset camera
+			controls.reset();
+		});
+
+		function animate() {
+			requestAnimationFrame(animate);
+			controls.update();
+
+			const now = performance.now();
+			let delta = (now - lastFrameTime) / 1000;
+			lastFrameTime = now;
+			frameCount++;
+
+			if (delta > 0.1) delta = 0.1;
+
+			if (state.currentVRM) {
+				state.currentVRM.update(delta);
+			}
+
+			if (state.isPlaying) {
+				state.currentTime += delta * state.playbackSpeed;
+
+				if (state.currentTime > state.totalDuration) {
+					state.currentTime = 0;
+					if (state.audio) {
+						state.audio.currentTime = 0;
+					}
+				}
+				if (pane && frameCount % 10 === 0) {
+					pane.refresh();
+				}
+
+				// Update Subtitles (Throttled to ~0.1s for performance)
+				if (frameCount % 6 === 0) {
+					const subDisplay = document.getElementById('subtitleDisplay');
+					if (subDisplay && (state.subtitles.length > 0 || state.scripts.length > 0)) {
+						const srtTime = (state.currentTime + state.srtOffset) * state.srtScale;
+						const scriptTime = (state.currentTime + state.scriptOffset) * state.scriptScale;
+						const currentSub = state.subtitles.find(s => srtTime >= s.start && srtTime <= s.end);
+
+						if (currentSub) {
+							subDisplay.innerText = `${currentSub.displayTime} ${currentSub.text}\n[Audio: ${state.currentTime.toFixed(1)}s | Script: ${scriptTime.toFixed(1)}s | SRT: ${srtTime.toFixed(1)}s]`;
+							subDisplay.style.display = 'block';
+						} else {
+							// Even without subtitles, show the sync monitor if scripts are loaded
+							subDisplay.innerText = `[Audio: ${state.currentTime.toFixed(1)}s | Script: ${scriptTime.toFixed(1)}s | SRT: ${srtTime.toFixed(1)}s]`;
+							subDisplay.style.display = 'block';
+						}
+					}
+				}
+			}
+
+			// Use adjusted time for camera objects
+			const scriptTime = (state.currentTime + state.scriptOffset) * state.scriptScale;
+			updateCameraObjects(scriptTime);
+
+			// Main Render - Use focused script camera or viewer camera
+			const mainCamera = (state.focusedScriptIndex !== null && state.scripts[state.focusedScriptIndex])
+				? state.scripts[state.focusedScriptIndex].visualizer.frustumCamera
+				: viewerCamera;
+
+			// Update aspect ratio for main camera
+			if (mainCamera instanceof THREE.PerspectiveCamera) {
+				mainCamera.aspect = window.innerWidth / window.innerHeight;
+				mainCamera.updateProjectionMatrix();
+			}
+
+			renderer.render(scene, mainCamera);
+
+			// --- Post-process Main Display ---
+			displayCtx.fillStyle = "#000";
+			displayCtx.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
+
+			const focusedScript = state.focusedScriptIndex !== null ? state.scripts[state.focusedScriptIndex] : null;
+
+			displayCtx.save();
+			// 1. DoF
+			if (focusedScript) {
+				const blurAmount = focusedScript.status.effect._dofBlurRadius * (displayCanvas.width / 1920); // Heuristic scale for 1080p
+				if (blurAmount > 0.5) {
+					displayCtx.filter = `blur(${blurAmount}px)`;
+				}
+			}
+			displayCtx.drawImage(renderer.domElement, 0, 0, displayCanvas.width, displayCanvas.height);
+			displayCtx.restore();
+
+			// 2. Wipe
+			if (focusedScript) {
+				const wipeProg = focusedScript.status.effect._wipeProgress;
+				const wipeType = (focusedScript.status.effect.wipe || "").split('(')[0];
+
+				if (wipeProg > 0) {
+					displayCtx.save();
+					if (wipeType === "Circle") {
+						const aspect = displayCanvas.width / displayCanvas.height;
+						// Wiki: (-0.5, -0.5) is top left, (0.5, 0.5) is bottom right
+						const centerX = (focusedScript.status.effect._wipeCenter.x + 0.5) * displayCanvas.width;
+						const centerY = (focusedScript.status.effect._wipeCenter.y + 0.5) * displayCanvas.height;
+
+						// Shader: radius = 1 - progress. 
+						// In our screen space, max radius is 1.0 (full height).
+						const vRadius = displayCanvas.height * (1 - wipeProg);
+						const hRadius = vRadius * aspect;
+
+						displayCtx.globalCompositeOperation = 'destination-in';
+						displayCtx.beginPath();
+						displayCtx.ellipse(centerX, centerY, hRadius, vRadius, 0, 0, Math.PI * 2);
+						displayCtx.fill();
+					} else {
+						// Directional Wipes (Progress = Wiped/Cut area)
+						let x = 0, y = 0, w = displayCanvas.width, h = displayCanvas.height;
+						if (wipeType === "Left to Right") { x = 0; w = displayCanvas.width * (1 - wipeProg); }
+						else if (wipeType === "Right to Left") { x = displayCanvas.width * wipeProg; w = displayCanvas.width * (1 - wipeProg); }
+						else if (wipeType === "Top to Bottom") { y = 0; h = displayCanvas.height * (1 - wipeProg); }
+						else if (wipeType === "Bottom to Top") { y = displayCanvas.height * wipeProg; h = displayCanvas.height * (1 - wipeProg); }
+
+						displayCtx.globalCompositeOperation = 'destination-in';
+						displayCtx.fillRect(x, y, w, h);
+					}
+					displayCtx.restore();
+				}
+			}
+
+			// 3. Outline (Laplacian Edge Detection)
+			if (focusedScript && focusedScript.status.effect._outlineActive) {
+				applyOutlineEffect(displayCtx, displayCanvas.width, displayCanvas.height, {
+					outlineOnly: focusedScript.status.effect._outlineOnly,
+					outlineColor: focusedScript.status.effect._outlineColor,
+					outlineBackgroundColor: focusedScript.status.effect._outlineBackgroundColor
+				});
+			}
+
+			// 4. Glitch
+			if (focusedScript && focusedScript.status.effect._glitchActive) {
+				applyGlitchEffect(displayCtx, displayCanvas.width, displayCanvas.height, {
+					colorGap: focusedScript.status.effect._glitchColorGap,
+					glitchScale: focusedScript.status.effect._glitchScale,
+					frequency: focusedScript.status.effect._glitchFrequency,
+					lineSpeed: focusedScript.status.effect._glitchLineSpeed,
+					lineSize: focusedScript.status.effect._glitchLineSize,
+					frameRate: focusedScript.status.effect._glitchFrameRate
+				}, scriptTime);
+			}
+
+			// Render Camera Previews - Round Robin Optimization
+			// Only render one preview per frame to save huge performance cost
+			if (state.scripts.length > 0) {
+				// Find next valid script with necessary components
+				let scriptsChecked = 0;
+				while (scriptsChecked < state.scripts.length) {
+					currentPreviewIndex = (currentPreviewIndex + 1) % state.scripts.length;
+					const script = state.scripts[currentPreviewIndex];
+
+					if (script.previewCtx && script.visualizer.frustumCamera) {
+						// Render this one
+						const frustumCam = script.visualizer.frustumCamera;
+						frustumCam.aspect = CONFIG.previewWidth / CONFIG.previewHeight;
+						frustumCam.updateProjectionMatrix();
+
+						script.visualizer.group.visible = false;
+						previewRenderer.render(scene, frustumCam);
+
+						const ctx = script.previewCtx;
+						const canvas = ctx.canvas;
+
+						// Sharpness
+						ctx.imageSmoothingEnabled = false;
+
+						// Clear background (wipe background is black usually)
+						ctx.fillStyle = "#000";
+						ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+						// 1. DoF (Blur) - Only apply if needed to avoid universal blurriness
+						const blurAmount = (script.status.effect._dofBlurRadius || 0) * (canvas.width / 500); // Heuristic scaling
+						if (blurAmount > 0.5) {
+							ctx.save();
+							ctx.filter = `blur(${blurAmount}px)`;
+							ctx.drawImage(previewRenderer.domElement, 0, 0, canvas.width, canvas.height);
+							ctx.restore();
+						} else {
+							// Draw raw and sharp
+							ctx.drawImage(previewRenderer.domElement, 0, 0, canvas.width, canvas.height);
+						}
+
+						// 2. Wipe
+						const wipeProg = script.status.effect._wipeProgress;
+						const wipeType = (script.status.effect.wipe || "").split('(')[0];
+
+						if (wipeProg > 0) {
+							ctx.save();
+							if (wipeType === "Circle") {
+								const aspect = canvas.width / canvas.height;
+								const centerX = (script.status.effect._wipeCenter.x + 0.5) * canvas.width;
+								const centerY = (script.status.effect._wipeCenter.y + 0.5) * canvas.height;
+
+								const vRadius = canvas.height * (1 - wipeProg);
+								const hRadius = vRadius * aspect;
+
+								ctx.globalCompositeOperation = 'destination-in';
+								ctx.beginPath();
+								ctx.ellipse(centerX, centerY, hRadius, vRadius, 0, 0, Math.PI * 2);
+								ctx.fill();
+							} else {
+								let x = 0, y = 0, w = canvas.width, h = canvas.height;
+								if (wipeType === "Left to Right") { x = canvas.width * wipeProg; w = canvas.width * (1 - wipeProg); }
+								else if (wipeType === "Right to Left") { w = canvas.width * (1 - wipeProg); }
+								else if (wipeType === "Top to Bottom") { y = canvas.height * wipeProg; h = canvas.height * (1 - wipeProg); }
+								else if (wipeType === "Bottom to Top") { h = canvas.height * (1 - wipeProg); }
+
+								ctx.globalCompositeOperation = 'destination-in';
+								ctx.fillRect(x, y, w, h);
+							}
+							ctx.restore();
+						}
+
+						// 4. Glitch
+						if (script.status.effect._glitchActive) {
+							applyGlitchEffect(ctx, canvas.width, canvas.height, {
+								colorGap: script.status.effect._glitchColorGap,
+								glitchScale: script.status.effect._glitchScale,
+								frequency: script.status.effect._glitchFrequency,
+								lineSpeed: script.status.effect._glitchLineSpeed,
+								lineSize: script.status.effect._glitchLineSize,
+								frameRate: script.status.effect._glitchFrameRate
+							}, scriptTime);
+						}
+
+						// 3. Outline (Laplacian Edge Detection)
+						if (script.status.effect._outlineActive) {
+							applyOutlineEffect(ctx, canvas.width, canvas.height, {
+								outlineOnly: script.status.effect._outlineOnly,
+								outlineColor: script.status.effect._outlineColor,
+								outlineBackgroundColor: script.status.effect._outlineBackgroundColor
+							});
+						}
+
+						script.visualizer.group.visible = true;
+						break; // Done for this frame
+					}
+					scriptsChecked++;
+				}
+			}
+		}
+
+		window.addEventListener('resize', () => {
+			viewerCamera.aspect = window.innerWidth / window.innerHeight;
+			viewerCamera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			resizeDisplay();
+		});
+
+		init();
+	</script>
+</body>
+
+</html>
