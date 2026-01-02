@@ -233,3 +233,15 @@ node generate_tiled_cameras.js
 - 大きなムーブメントファイル(数千のムーブメント)は動作が遅くなる可能性があります
 - 再生速度を下げてみてください
 - 非常に大きなファイルは小さなセグメントに分割することを検討してください
+
+## Credits & Libraries
+
+このプロジェクトは以下のオープンソースライブラリを使用しています。これらはMITライセンスの下で提供されています。
+
+- **[Three.js](https://threejs.org/)** (MIT License)
+- **[Tweakpane](https://cocopon.github.io/tweakpane/)** (MIT License)
+- **[@pixiv/three-vrm](https://github.com/pixiv/three-vrm)** (MIT License)
+
+## Copyright
+
+&copy; 2026 tayo.shirosugi
