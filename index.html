@@ -1333,159 +1333,173 @@
 		}
 
 
+		function resetScriptEffects(script) {
+			script.status.effect.dof = "-";
+			script.status.effect.wipe = "-";
+			script.status.effect.outline = "-";
+			script.status.effect.glitch = "-";
+			script.status.effect._dofBlurRadius = 0;
+			script.status.effect._wipeProgress = 0;
+			script.status.effect._outlineActive = false;
+			script.status.effect._outlineOnly = 0;
+			script.status.effect._outlineColor = { r: 0, g: 255, b: 255 };
+			script.status.effect._outlineBackgroundColor = { r: 0, g: 0, b: 0 };
+			script.status.effect._glitchActive = false;
+			script.status.effect._glitchColorGap = 0;
+			script.status.effect._glitchScale = 1;
+			script.status.effect._glitchFrequency = 0.1;
+			script.status.effect._glitchLineSpeed = 5;
+			script.status.effect._glitchLineSize = 0.01;
+			script.status.effect._glitchFrameRate = 15;
+		}
+
 		function updateCameraObjects(adjustedTime) {
 			state.scripts.forEach(script => {
 				const current = getMovementAtTime(script.movements, adjustedTime);
 
-				if (current) {
-					const { movement, progress } = current;
+				// Reset effects if we are past the end of the script or in a gap
+				if (!current || adjustedTime > script.duration) {
+					resetScriptEffects(script);
+					// If we have a 'current' (clamped last movement), we still want to update pos/rot 
+					// even if we are past the end, to keep the camera in place.
+					if (!current) return;
+				}
 
-					// Interpolate
-					const startPos = convertPosition(movement.StartPos);
-					const endPos = convertPosition(movement.EndPos);
-					const currentPos = new THREE.Vector3().lerpVectors(startPos, endPos, progress);
+				const { movement, progress } = current;
 
-					const startRot = convertRotation(movement.StartRot);
-					const endRot = convertRotation(movement.EndRot);
-					const currentRot = new THREE.Quaternion().slerpQuaternions(startRot, endRot, progress);
+				// Interpolate pos/rot/fov
+				const startPos = convertPosition(movement.StartPos);
+				const endPos = convertPosition(movement.EndPos);
+				const currentPos = new THREE.Vector3().lerpVectors(startPos, endPos, progress);
 
-					const startFOV = movement.StartPos.FOV || 60;
-					const endFOV = movement.EndPos.FOV || 60;
-					const currentFOV = THREE.MathUtils.lerp(startFOV, endFOV, progress);
+				const startRot = convertRotation(movement.StartRot);
+				const endRot = convertRotation(movement.EndRot);
+				const currentRot = new THREE.Quaternion().slerpQuaternions(startRot, endRot, progress);
 
-					// Update Visualizer
-					script.visualizer.update(currentPos, currentRot, currentFOV);
+				const startFOV = movement.StartPos.FOV || 60;
+				const endFOV = movement.EndPos.FOV || 60;
+				const currentFOV = THREE.MathUtils.lerp(startFOV, endFOV, progress);
 
-					// Update Status for UI (Original Script values)
-					const px = movement.StartPos.x + (movement.EndPos.x - movement.StartPos.x) * progress;
-					const py = movement.StartPos.y + (movement.EndPos.y - movement.StartPos.y) * progress;
-					const pz = movement.StartPos.z + (movement.EndPos.z - movement.StartPos.z) * progress;
-					script.status.pos = `${px.toFixed(2)}, ${py.toFixed(2)}, ${pz.toFixed(2)}`;
+				// Update Visualizer
+				script.visualizer.update(currentPos, currentRot, currentFOV);
 
-					const rx = movement.StartRot.x + (movement.EndRot.x - movement.StartRot.x) * progress;
-					const ry = movement.StartRot.y + (movement.EndRot.y - movement.StartRot.y) * progress;
-					const rz = movement.StartRot.z + (movement.EndRot.z - movement.StartRot.z) * progress;
-					script.status.rot = `${rx.toFixed(1)}, ${ry.toFixed(1)}, ${rz.toFixed(1)}`;
+				// Update Status for UI
+				const px = movement.StartPos.x + (movement.EndPos.x - movement.StartPos.x) * progress;
+				const py = movement.StartPos.y + (movement.EndPos.y - movement.StartPos.y) * progress;
+				const pz = movement.StartPos.z + (movement.EndPos.z - movement.StartPos.z) * progress;
+				script.status.pos = `${px.toFixed(2)}, ${py.toFixed(2)}, ${pz.toFixed(2)}`;
 
-					script.status.fov = parseFloat(currentFOV.toFixed(1));
+				const rx = movement.StartRot.x + (movement.EndRot.x - movement.StartRot.x) * progress;
+				const ry = movement.StartRot.y + (movement.EndRot.y - movement.StartRot.y) * progress;
+				const rz = movement.StartRot.z + (movement.EndRot.z - movement.StartRot.z) * progress;
+				script.status.rot = `${rx.toFixed(1)}, ${ry.toFixed(1)}, ${rz.toFixed(1)}`;
+				script.status.fov = parseFloat(currentFOV.toFixed(1));
 
-					// Update CameraEffect for UI
-					if (movement.CameraEffect) {
-						const fx = movement.CameraEffect;
+				// Reset effects if we are at the very end of the script or if no CameraEffect is present
+				if (adjustedTime >= script.duration) {
+					resetScriptEffects(script);
+					return; // Stop processing effects for this script
+				}
 
-						// DoF
-						let dofStr = "Off";
-						let blurVal = 0;
-						if (fx.enableDoF) {
-							const startDoF = fx.StartDoFEffect || fx.StartDoF;
-							const endDoF = fx.EndDoFEffect || fx.EndDoF;
-							blurVal = THREE.MathUtils.lerp(startDoF?.dofBlurRadius || 0, endDoF?.dofBlurRadius || 0, progress);
-							dofStr = `Blur:${blurVal.toFixed(1)}`;
-						}
-						script.status.effect.dof = dofStr;
-						script.status.effect._dofBlurRadius = blurVal;
+				// Update CameraEffect for UI
+				if (movement.CameraEffect) {
+					const fx = movement.CameraEffect;
 
-						// Wipe
-						let wipeStr = fx.WipeType || fx.wipeType || "None";
-						let wipeProg = 0;
-						let wipeCX = 0, wipeCY = 0;
-						if (wipeStr !== "None") {
-							const startWipe = fx.StartWipeEffect || fx.StartWipe;
-							const endWipe = fx.EndWipeEffect || fx.EndWipe;
-							wipeProg = THREE.MathUtils.lerp(startWipe?.wipeProgress || 0, endWipe?.wipeProgress || 0, progress);
-							wipeStr += `(${(wipeProg * 100).toFixed(0)}%)`;
-
-							wipeCX = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.x || 0, endWipe?.wipeCircleCenter?.x || 0, progress);
-							wipeCY = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.y || 0, endWipe?.wipeCircleCenter?.y || 0, progress);
-						}
-						script.status.effect.wipe = wipeStr;
-						script.status.effect._wipeProgress = wipeProg;
-						script.status.effect._wipeCenter.x = wipeCX;
-						script.status.effect._wipeCenter.y = wipeCY;
-
-						// Outline
-						let outlineActive = fx.enableOutlineEffect || fx.EnableOutlineEffect || false;
-						let outlineOnly = fx.outlineEffectOnly !== undefined ? fx.outlineEffectOnly : (fx.outlineOnly || 0);
-
-						const parseColor = (obj, key) => {
-							if (!obj) return null;
-							// Check both camelCase and PascalCase
-							let c = obj[key] || obj[key.charAt(0).toUpperCase() + key.slice(1)];
-							if (!c) return { r: 0, g: 0, b: 0 };
-
-							return {
-								r: (c.r > 1 ? c.r : c.r * 255) || 0,
-								g: (c.g > 1 ? c.g : c.g * 255) || 0,
-								b: (c.b > 1 ? c.b : c.b * 255) || 0
-							};
-						};
-
-						const lerpColor = (startObj, endObj, key, p) => {
-							const p1 = parseColor(startObj, key) || { r: 255, g: 255, b: 255 }; // Default to white for outline
-							const p2 = parseColor(endObj, key) || p1;
-							return {
-								r: p1.r + (p2.r - p1.r) * p,
-								g: p1.g + (p2.g - p1.g) * p,
-								b: p1.b + (p2.b - p1.b) * p
-							};
-						};
-
-						let outColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineColor', progress);
-						let bgColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineBackgroundColor', progress);
-
-						script.status.effect.outline = outlineActive ? `On (Mix:${(outlineOnly * 100).toFixed(0)}%, R:${Math.round(outColor.r)} G:${Math.round(outColor.g)} B:${Math.round(outColor.b)})` : "Off";
-						script.status.effect._outlineActive = outlineActive;
-						script.status.effect._outlineOnly = outlineOnly;
-						script.status.effect._outlineColor = outColor;
-						script.status.effect._outlineBackgroundColor = bgColor;
-
-						// Glitch
-						let glitchActive = fx.EnableGlitchEffect || fx.enableGlitchEffect || false;
-						let glitchGap = 0;
-						let glitchScale = 1;
-						let glitchFreq = 0.1;
-						let glitchLineSpeed = 5;
-						let glitchLineSize = 0.01;
-						let glitchFrameRate = 15;
-						if (glitchActive) {
-							const startGlitch = fx.StartGlitchEffect || fx.StartGlitch;
-							const endGlitch = fx.EndGlitchEffect || fx.EndGlitch;
-
-							const getGProp = (obj, key) => {
-								if (!obj) return undefined;
-								const pKey = key.charAt(0).toUpperCase() + key.slice(1);
-								const gKey = "Glitch" + pKey;
-								if (obj[gKey] !== undefined) return obj[gKey];
-								if (obj[pKey] !== undefined) return obj[pKey];
-								return obj[key];
-							};
-
-							glitchGap = THREE.MathUtils.lerp(getGProp(startGlitch, 'colorGap') ?? 0, getGProp(endGlitch, 'colorGap') ?? 0, progress);
-							glitchScale = THREE.MathUtils.lerp(getGProp(startGlitch, 'glitchScale') ?? 1, getGProp(endGlitch, 'glitchScale') ?? 1, progress);
-							glitchFreq = THREE.MathUtils.lerp(getGProp(startGlitch, 'frequency') ?? 0.1, getGProp(endGlitch, 'frequency') ?? 0.1, progress);
-							glitchLineSpeed = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSpeed') ?? 5, getGProp(endGlitch, 'lineSpeed') ?? 5, progress);
-							glitchLineSize = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSize') ?? 0.01, getGProp(endGlitch, 'lineSize') ?? 0.01, progress);
-							glitchFrameRate = THREE.MathUtils.lerp(getGProp(startGlitch, 'frameRate') ?? 15, getGProp(endGlitch, 'frameRate') ?? 15, progress);
-						}
-						script.status.effect.glitch = glitchActive ? `On (Gap:${glitchGap.toFixed(2)}, Freq:${glitchFreq.toFixed(1)})` : "Off";
-						script.status.effect._glitchActive = glitchActive;
-						script.status.effect._glitchColorGap = glitchGap;
-						script.status.effect._glitchScale = glitchScale;
-						script.status.effect._glitchFrequency = glitchFreq;
-						script.status.effect._glitchLineSpeed = glitchLineSpeed;
-						script.status.effect._glitchLineSize = glitchLineSize;
-						script.status.effect._glitchFrameRate = glitchFrameRate;
-					} else {
-						script.status.effect.dof = "-";
-						script.status.effect.wipe = "-";
-						script.status.effect.outline = "-";
-						script.status.effect._dofBlurRadius = 0;
-						script.status.effect._wipeProgress = 0;
-						script.status.effect._outlineActive = false;
-						script.status.effect._outlineOnly = 0;
-						script.status.effect._outlineColor = { r: 0, g: 255, b: 255 };
-						script.status.effect._outlineBackgroundColor = { r: 0, g: 0, b: 0 };
+					// DoF
+					let dofStr = "Off";
+					let blurVal = 0;
+					if (fx.enableDoF) {
+						const startDoF = fx.StartDoFEffect || fx.StartDoF;
+						const endDoF = fx.EndDoFEffect || fx.EndDoF;
+						blurVal = THREE.MathUtils.lerp(startDoF?.dofBlurRadius || 0, endDoF?.dofBlurRadius || 0, progress);
+						dofStr = `Blur:${blurVal.toFixed(1)}`;
 					}
+					script.status.effect.dof = dofStr;
+					script.status.effect._dofBlurRadius = blurVal;
+
+					// Wipe
+					let wipeStr = fx.WipeType || fx.wipeType || "None";
+					let wipeProg = 0;
+					let wipeCX = 0, wipeCY = 0;
+					if (wipeStr !== "None") {
+						const startWipe = fx.StartWipeEffect || fx.StartWipe;
+						const endWipe = fx.EndWipeEffect || fx.EndWipe;
+						wipeProg = THREE.MathUtils.lerp(startWipe?.wipeProgress || 0, endWipe?.wipeProgress || 0, progress);
+						wipeStr += `(${(wipeProg * 100).toFixed(0)}%)`;
+
+						wipeCX = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.x || 0, endWipe?.wipeCircleCenter?.x || 0, progress);
+						wipeCY = THREE.MathUtils.lerp(startWipe?.wipeCircleCenter?.y || 0, endWipe?.wipeCircleCenter?.y || 0, progress);
+					}
+					script.status.effect.wipe = wipeStr;
+					script.status.effect._wipeProgress = wipeProg;
+					script.status.effect._wipeCenter.x = wipeCX;
+					script.status.effect._wipeCenter.y = wipeCY;
+
+					// Outline
+					let outlineActive = fx.enableOutlineEffect || fx.EnableOutlineEffect || false;
+					let outlineOnly = fx.outlineEffectOnly !== undefined ? fx.outlineEffectOnly : (fx.outlineOnly || 0);
+
+					const parseColor = (obj, key) => {
+						if (!obj) return null;
+						let c = obj[key] || obj[key.charAt(0).toUpperCase() + key.slice(1)];
+						if (!c) return { r: 0, g: 0, b: 0 };
+						return {
+							r: (c.r > 1 ? c.r : c.r * 255) || 0,
+							g: (c.g > 1 ? c.g : c.g * 255) || 0,
+							b: (c.b > 1 ? c.b : c.b * 255) || 0
+						};
+					};
+
+					const lerpColor = (startObj, endObj, key, p) => {
+						const p1 = parseColor(startObj, key) || { r: 255, g: 255, b: 255 };
+						const p2 = parseColor(endObj, key) || p1;
+						return {
+							r: p1.r + (p2.r - p1.r) * p,
+							g: p1.g + (p2.g - p1.g) * p,
+							b: p1.b + (p2.b - p1.b) * p
+						};
+					};
+
+					let outColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineColor', progress);
+					let bgColor = lerpColor(fx.StartOutlineEffect || fx.StartOutline, fx.EndOutlineEffect || fx.EndOutline, 'outlineBackgroundColor', progress);
+
+					script.status.effect.outline = outlineActive ? `On (Mix:${(outlineOnly * 100).toFixed(0)}%, R:${Math.round(outColor.r)} G:${Math.round(outColor.g)} B:${Math.round(outColor.b)})` : "Off";
+					script.status.effect._outlineActive = outlineActive;
+					script.status.effect._outlineOnly = outlineOnly;
+					script.status.effect._outlineColor = outColor;
+					script.status.effect._outlineBackgroundColor = bgColor;
+
+					// Glitch
+					let glitchActive = fx.EnableGlitchEffect || fx.enableGlitchEffect || false;
+					let glitchGap = 0, glitchScale = 1, glitchFreq = 0.1, glitchLineSpeed = 5, glitchLineSize = 0.01, glitchFrameRate = 15;
+					if (glitchActive) {
+						const startGlitch = fx.StartGlitchEffect || fx.StartGlitch;
+						const endGlitch = fx.EndGlitchEffect || fx.EndGlitch;
+						const getGProp = (obj, key) => {
+							if (!obj) return undefined;
+							const pKey = key.charAt(0).toUpperCase() + key.slice(1);
+							const gKey = "Glitch" + pKey;
+							if (obj[gKey] !== undefined) return obj[gKey];
+							if (obj[pKey] !== undefined) return obj[pKey];
+							return obj[key];
+						};
+						glitchGap = THREE.MathUtils.lerp(getGProp(startGlitch, 'colorGap') ?? 0, getGProp(endGlitch, 'colorGap') ?? 0, progress);
+						glitchScale = THREE.MathUtils.lerp(getGProp(startGlitch, 'glitchScale') ?? 1, getGProp(endGlitch, 'glitchScale') ?? 1, progress);
+						glitchFreq = THREE.MathUtils.lerp(getGProp(startGlitch, 'frequency') ?? 0.1, getGProp(endGlitch, 'frequency') ?? 0.1, progress);
+						glitchLineSpeed = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSpeed') ?? 5, getGProp(endGlitch, 'lineSpeed') ?? 5, progress);
+						glitchLineSize = THREE.MathUtils.lerp(getGProp(startGlitch, 'lineSize') ?? 0.01, getGProp(endGlitch, 'lineSize') ?? 0.01, progress);
+						glitchFrameRate = THREE.MathUtils.lerp(getGProp(startGlitch, 'frameRate') ?? 15, getGProp(endGlitch, 'frameRate') ?? 15, progress);
+					}
+					script.status.effect.glitch = glitchActive ? `On (Gap:${glitchGap.toFixed(2)}, Freq:${glitchFreq.toFixed(1)})` : "Off";
+					script.status.effect._glitchActive = glitchActive;
+					script.status.effect._glitchColorGap = glitchGap;
+					script.status.effect._glitchScale = glitchScale;
+					script.status.effect._glitchFrequency = glitchFreq;
+					script.status.effect._glitchLineSpeed = glitchLineSpeed;
+					script.status.effect._glitchLineSize = glitchLineSize;
+					script.status.effect._glitchFrameRate = glitchFrameRate;
+				} else {
+					resetScriptEffects(script);
 				}
 			});
 		}
